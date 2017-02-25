@@ -43,7 +43,7 @@ def main():
 
     args = parser.parse_args()
 
-    data = pickle.load(open(args.expert_policy_file, "rb"))
+    data = pickle.load(open("./trainingData/"+args.expert_policy_file, "rb"))
 
     observations = data["observations"]
     actions = np.squeeze(data["actions"])
