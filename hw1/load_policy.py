@@ -22,6 +22,7 @@ def load_policy(filename):
             return l['AffineLayer']['W'].astype(np.float32), l['AffineLayer']['b'].astype(np.float32)
 
         def apply_nonlin(x):
+            print("non-linearity:", nonlin_type)
             if nonlin_type == 'lrelu':
                 return tf_util.lrelu(x, leak=.01) # openai/imitation nn.py:233
             elif nonlin_type == 'tanh':
@@ -46,13 +47,24 @@ def load_policy(filename):
             l = layer_params[layer_name]
             W, b = read_layer(l)
             curr_activations_bd = apply_nonlin(tf.matmul(curr_activations_bd, W) + b)
+            print("reading layer ",layer_name," weights ",W.shape," bias ",b.shape)
 
         # Output layer
         W, b = read_layer(policy_params['out'])
         output_bo = tf.matmul(curr_activations_bd, W) + b
+        print("reading output layer weights ",W.shape," bias ",b.shape)
         return output_bo
 
     obs_bo = tf.placeholder(tf.float32, [None, None])
     a_ba = build_policy(obs_bo)
     policy_fn = tf_util.function([obs_bo], a_ba)
     return policy_fn
+
+
+if __name__=="__main__":
+
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('expert_policy_file', type=str)
+    args = parser.parse_args()
+    load_policy(args.expert_policy_file)
