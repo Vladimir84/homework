@@ -1,13 +1,12 @@
 import tensorflow as tf
 import numpy as np
+import gym
+import load_policy
 
-
-
-def runEpisode(policy_fn, env, render = True):
+def runEpisode(policy_fn, env, max_steps = 1000, render = True):
     observations = []
     actions = []
     done = False
-    steps = 0
 
     obs = env.reset()
     while not done:
@@ -15,80 +14,98 @@ def runEpisode(policy_fn, env, render = True):
         observations.append(obs)
         actions.append(action)
         obs, r, done, _ = env.step(action)
-        steps += 1
-        if steps % 10 == 0:
-            if render:
-               env.render()
+        if len(actions) % 10 == 0 and render:
+           env.render()
+        if len(actions)>=max_steps:
+           break
+
     return observations, actions
 
-def trainedPolicy(estimator):
+def policyConverter(estimator):
     def prediction(obs):
         return estimator.predict(obs, as_iterable=False)
+    return prediction
+
+def policyConverter2(estimator):
+    def prediction(obs):
+        def input_fn_train(): # returns x, Y       
+            return {"": tf.constant(np.array(obs), dtype=tf.float32)}
+        return estimator.predict(input_fn=input_fn_train,as_iterable=False)
     return prediction
 
 def askExpert(expertPolicy, observations):
     expertActions = []
     for observation in observations:
-        action = expertPolicy(observation)
+        action = expertPolicy(observation[None,:])
         expertActions.append(action)
     return expertActions
 
-def trainModel(estimator, observations, actions):
+def trainImitator(estimator, observations, actions):
     def input_fn_train(): # returns x, Y       
-        return {"": tf.constant(observations, dtype=tf.float32)}, \
-               tf.constant(actions, dtype=tf.float32)
+        return {"": tf.constant(np.array(observations), dtype=tf.float32)}, \
+               tf.constant(np.squeeze(np.array(actions)), dtype=tf.float32)
 
     estimator.fit(input_fn=input_fn_train, steps = 3000)
+#    return estimator
 
+#def loadDimensions(env):
+#
+#    # observation_sample = env.observation_space.sample() # bug in mtrand.RandomState.uniform
+#    action_sample = env.action_space.sample()
+#
+#    feature_dimension = observation_sample.shape[0]
+#    label_dimension = action_sample.shape[0]
+#
+#    return feature_dimension, label_dimension
 
-def loadDimensions(envName):
-    import pickle
-    data = pickle.load(open("./trainingData/"+envName+".p", "rb"))
-
-    observations = data["observations"]
-    actions = np.squeeze(data["actions"])
-    Label_Dimension=actions.shape[1]
-    Feature_Dimension=observations.shape[1]
-    return Label_Dimension, Feature_Dimension
-
-
-def loadEstimator(envName, Label_Dimension, Feature_Dimension):
-    dirName = "./trained/"+envName+".p"
-    print("Loading trianed model from",dirName)
-
-    label_dimension, feature_dimension = loadDimensions(envName)
-
-    feature_column = [tf.contrib.layers.real_valued_column("", dimension=Feature_Dimension)]
+def createImitator(feature_dimension, label_dimension, dir_name):
+    feature_column = [tf.contrib.layers.real_valued_column("", dimension=feature_dimension)]
     estimator = tf.contrib.learn.DNNRegressor(
-                      feature_columns=feature_column,
-                      hidden_units=[64,64],
-                      #activation_fn = tf.nn.relu,
-                      activation_fn = tf.tanh,
-                      model_dir = dirName,
-                      label_dimension=Label_Dimension
+                   feature_columns=feature_column,
+                   hidden_units=[64,64],
+                   #activation_fn = tf.nn.relu,
+                   activation_fn = tf.tanh,
+                   model_dir = dir_name,
+                   label_dimension=label_dimension
                 )
     return estimator
 
-def applyDagger():
-    #run episode of expert policy
-    runEpisode(policy_fn, env, render = True)
+def applyDagger(expert_policy, imitator, env, num_iterations=50):
+    with tf.Session():
+       #run episode of expert policy
+       observations, actions = runEpisode(expert_policy, env)
+
+       for iteration in range(num_iterations):
+          #train imitation policy
+          #imitator = trainImitator(imitator, observations, actions)
+          trainImitator(imitator, observations, actions)
+          imitation_policy = policyConverter2(imitator)
+          #run imitation_policy
+          observations_episode, _ = runEpisode(imitation_policy, env)
+          expert_actions =  askExpert(expert_policy, observations_episode)
+          observations.extend(observations_episode)
+          actions.extend(expert_actions)
 
 
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('envName', type=str)
-    parser.add_argument('numEpisodes', type=int)
-
+    parser.add_argument('env_name', type=str)
+    parser.add_argument('num_iterations', type=int)
+    #because motherfucking bugs 
+    parser.add_argument('feature_dimension', type=int)
+    parser.add_argument('label_dimension', type=int)
     args = parser.parse_args()
 
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    estimator = loadEstimator(dirName, label_dimension, feature_dimension)
+    expert_policy = load_policy.load_policy("experts/"+args.env_name+".pkl")
+    dir_name = "trained/"+args.env_name+".dagger"
+    imitator = createImitator(args.feature_dimension, args.label_dimension, dir_name)
 
-    import gym
-    env = gym.make(args.envName)
-    play(estimator, env, args.numEpisodes, True)
+    env = gym.make(args.env_name)
+
+    applyDagger(expert_policy, imitator, env, args.num_iterations)
 
 if __name__ == '__main__':
     main()
