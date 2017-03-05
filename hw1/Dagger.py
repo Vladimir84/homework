@@ -23,11 +23,6 @@ def runEpisode(policy_fn, env, max_steps = 1000, render = True):
 
 def policyConverter(estimator):
     def prediction(obs):
-        return estimator.predict(obs, as_iterable=False)
-    return prediction
-
-def policyConverter2(estimator):
-    def prediction(obs):
         def input_fn_train(): # returns x, Y       
             return {"": tf.constant(np.array(obs), dtype=tf.float32)}
         return estimator.predict(input_fn=input_fn_train,as_iterable=False)
@@ -79,7 +74,7 @@ def applyDagger(expert_policy, imitator, env, num_iterations=50):
           #train imitation policy
           #imitator = trainImitator(imitator, observations, actions)
           trainImitator(imitator, observations, actions)
-          imitation_policy = policyConverter2(imitator)
+          imitation_policy = policyConverter(imitator)
           #run imitation_policy
           observations_episode, _ = runEpisode(imitation_policy, env)
           expert_actions =  askExpert(expert_policy, observations_episode)
