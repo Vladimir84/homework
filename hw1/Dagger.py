@@ -2,11 +2,15 @@ import tensorflow as tf
 import numpy as np
 import gym
 import load_policy
+from EvaluatePolicy import evaluate
 
-def runEpisode(policy_fn, env, max_steps = 1000, render = True):
+def runEpisode(policy_fn, env, render = True):
     observations = []
     actions = []
     done = False
+    totalr = 0.
+    steps = 0
+    max_steps = env.spec.timestep_limit
 
     obs = env.reset()
     while not done:
@@ -14,6 +18,8 @@ def runEpisode(policy_fn, env, max_steps = 1000, render = True):
         observations.append(obs)
         actions.append(action)
         obs, r, done, _ = env.step(action)
+        totalr += r
+        steps += 1
         if len(actions) % 10 == 0 and render:
            env.render()
         if len(actions)>=max_steps:
@@ -66,20 +72,28 @@ def createImitator(feature_dimension, label_dimension, dir_name):
     return estimator
 
 def applyDagger(expert_policy, imitator, env, num_iterations=50):
+    imitation_policy = policyConverter(imitator)
+
+    means = []
+    stds = []
     with tf.Session():
        #run episode of expert policy
        observations, actions = runEpisode(expert_policy, env)
 
        for iteration in range(num_iterations):
           #train imitation policy
-          #imitator = trainImitator(imitator, observations, actions)
           trainImitator(imitator, observations, actions)
-          imitation_policy = policyConverter(imitator)
           #run imitation_policy
           observations_episode, _ = runEpisode(imitation_policy, env)
           expert_actions =  askExpert(expert_policy, observations_episode)
           observations.extend(observations_episode)
           actions.extend(expert_actions)
+
+          mean, std = evaluate(env, imitation_policy)
+          means.append(mean)
+          stds.append(std)
+
+    return means, stds
 
 
 def main():
@@ -100,7 +114,12 @@ def main():
 
     env = gym.make(args.env_name)
 
-    applyDagger(expert_policy, imitator, env, args.num_iterations)
+    means, stds = applyDagger(expert_policy, imitator, env, args.num_iterations)
+
+    data = {'mean_returns':means,
+            'std_returns':stds}
+    pickle.dump(data,open("dagger/"+args.env_name+".dat") )
+
 
 if __name__ == '__main__':
     main()

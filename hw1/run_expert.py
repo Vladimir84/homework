@@ -29,8 +29,8 @@ def main():
 
     print('loading and building expert policy')
     policy_fn = load_policy.load_policy(args.expert_policy_file)
+    print(policy_fn)
     print('loaded and built')
-
     with tf.Session():
         tf_util.initialize()
 
@@ -66,7 +66,9 @@ def main():
         print('std of return', np.std(returns))
 
         expert_data = {'observations': np.array(observations),
-                       'actions': np.array(actions)}
+                       'actions': np.array(actions),
+                       'mean_return':np.mean(returns),
+                       'std_return':np.std(returns)}
         pickle.dump(expert_data, open("./trainingData/"+args.envname+".p","wb"))
 
 
