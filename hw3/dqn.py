@@ -39,6 +39,12 @@ def learn(env,
         following named arguments:
             img_in: tf.Tensor
                 tensorflow tensor representing the input image
+    """
+    # or is it     
+           # Vote that you cannot use "last_obs" directly as input
+           # into your network, since it needs to be processed to include context
+           # from previous frames. 
+    """
             num_actions: int
                 number of actions
             scope: str
@@ -128,10 +134,27 @@ def learn(env,
     ######
 
     # YOUR CODE HERE
+    _ = q_func(obs_t_float, num_actions, scope="q_func", reuse=False)
     q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
+    _ = q_func(obs_t_float, num_actions, scope="q_func_target", reuse=False)
     target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
-    Q_star = max([q_func_target(obs_t_ph, action) for action in range(num_actions)])
-    total_error = rew_t_ph+Q_star-q_func_target(obs_t_ph, act_t_ph)
+    """q_func: function
+        Model to use for computing the q function. It should accept the
+        following named arguments:
+            img_in: tf.Tensor
+                tensorflow tensor representing the input image
+            num_actions: int
+                number of actions
+            scope: str
+                scope in which all the model related variables
+                should be created
+            reuse: bool
+                whether previously created variables should be reused.
+    """
+    Qs = q_func(obs_t_ph, num_actions, scope = 'q_func_target', reuse = False)
+    Q_star = max(Qs)
+    Q = Qs[act_t_ph]
+    total_error = rew_t_ph+Q_star-Q
     ######
 
     # construct optimization op (with gradient clipping)
@@ -197,7 +220,7 @@ def learn(env,
            # input that should be given to a Q network by appending some
            # previous frames.
            obs = replay_buffer.encode_recent_observation()
-           qs = [q_func(obs, action) for action in range(num_actions)];
+           qs = q_func(obs, action, scope = 'q_func', reuse = False) 
            q, action = max(enumerate(qs), key = lambda item: item[1])
 
         # obs, reward, done, info = env.step(action)
@@ -214,6 +237,8 @@ def learn(env,
         #####
         
         # YOUR CODE HERE
+         #Q_star = max([q_func_target(obs_t_ph, action) for action in range(num_actions)])
+        #total_error = rew_t_ph+Q_star-q_func_target(obs_t_ph, act_t_ph)
 
         #####
 
